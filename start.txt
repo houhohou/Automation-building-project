@@ -1,0 +1,6 @@
+#!bin.bash
+
+#main install
+
+sh ansible_install.sh
+sh ansiblerun.sh
