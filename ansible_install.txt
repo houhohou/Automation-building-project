@@ -1,0 +1,293 @@
+#!bin/bash
+#키 만들고 뿌리기
+
+
+#변수 생성
+var00="k8sa" # ansible
+var11="k8sm" # master
+var22="k8sn1" #node1
+var33="k8sn2" #node2
+var44="k8sn3" #node3
+var1="10.0.0.101" #master
+var2="10.0.0.102" #node1
+var3="10.0.0.103" #node2
+var4="10.0.0.104" #node3
+
+mkdir ansible_install
+cd ./ansible_install
+
+# 이름 바꾸기 #/etc/hostname 
+cat > /etc/hostname << EOF
+${var00}.labs.local
+EOF
+
+#유저생성
+useradd admin
+echo 'It1' | passwd --stdin admin
+
+
+#expect 설치 
+yum install -y epel-release expect
+
+#ssh 키 생성 파일 생성
+cat > ./ssh.exp << EOF
+#!/usr/bin/expect
+spawn sudo -u admin ssh-keygen -t rsa
+expect {
+  "(/home/admin/.ssh/id_rsa):" { send "\n"; exp_continue }
+}
+expect {
+  "(empty for no passphrase):" { send "\n"; exp_continue }
+}
+expect {
+  "passphrase again:" { send "\n"; exp_continue }
+}
+expect eof
+EOF
+
+#모드 변경
+chmod 777 ./ssh.exp
+
+#키 생성 실행
+./ssh.exp
+
+
+#expect 파일 생성
+cat > ./aa.exp << EOF
+#!/usr/bin/expect
+set username [lindex \$argv 0]
+set password [lindex \$argv 1]
+set hostname [lindex \$argv 2]
+if {[llength \$argv] == 0} {
+  send_user "Usage: scriptname username \'password\' hostname \n"
+  exit 1
+}
+spawn ssh -o StrictHostKeyChecking=no \$username@\$hostname
+expect {
+  "(yes/no)?" { send "yes\n"; exp_continue }
+}
+expect {
+  "password:" { send "\$password\r"; exp_continue }
+}
+expect -re "Last login:"
+send "useradd admin\r"
+send "passwd admin\r"
+expect {
+  "새  암호:" { send "\$password\r"; exp_continue }
+}
+expect {
+  "새  암호 재입력:" { send "\$password\r"; exp_continue }
+}
+send_user "\n# SSH is success \n"
+send "exit \r"
+expect eof
+EOF
+
+chmod 777 ./aa.exp
+
+
+#접속 확인 유저생성
+./aa.exp root It1 ${var1}
+./aa.exp root It1 ${var2}
+./aa.exp root It1 ${var3}
+./aa.exp root It1 ${var4}
+
+#sshpass 설치
+yum install -y sshpass
+
+#호스트 이름 변경 #####
+sshpass -p It1 ssh root@${var1} "hostnamectl set-hostname '${var11}'.labs.local"
+sshpass -p It1 ssh root@${var2} "hostnamectl set-hostname '${var22}'.labs.local"
+sshpass -p It1 ssh root@${var3} "hostnamectl set-hostname '${var33}'.labs.local"
+sshpass -p It1 ssh root@${var4} "hostnamectl set-hostname '${var44}'.labs.local"
+
+#공개키 배포
+sshpass -p It1 ssh-copy-id -i /home/admin/.ssh/id_rsa.pub admin@${var1} 
+sshpass -p It1 ssh-copy-id -i /home/admin/.ssh/id_rsa.pub admin@${var2}
+sshpass -p It1 ssh-copy-id -i /home/admin/.ssh/id_rsa.pub admin@${var3}
+sshpass -p It1 ssh-copy-id -i /home/admin/.ssh/id_rsa.pub admin@${var4}
+
+
+
+#hosts파일추가
+cat > ./cat.txt << EOF
+#!/usr/bin/expect
+${var1}      ${var11}    ${var11}.labs.local
+${var2}     ${var22}   ${var22}.labs.local
+${var3}      ${var33}   ${var33}.labs.local
+${var4}      ${var44}   ${var44}.labs.local
+EOF
+
+
+#hosts 파일 전송
+sshpass -p It1 scp ./cat.txt root@${var1}:/root/cat.txt
+sshpass -p It1 scp ./cat.txt root@${var2}:/root/cat.txt
+sshpass -p It1 scp ./cat.txt root@${var3}:/root/cat.txt
+sshpass -p It1 scp ./cat.txt root@${var4}:/root/cat.txt
+
+#hosts 파일 붙여넣기
+sshpass -p It1 ssh root@${var1} 'cat /root/cat.txt >> /etc/hosts'
+sshpass -p It1 ssh root@${var2} 'cat /root/cat.txt >> /etc/hosts'
+sshpass -p It1 ssh root@${var3} 'cat /root/cat.txt >> /etc/hosts'
+sshpass -p It1 ssh root@${var4} 'cat /root/cat.txt >> /etc/hosts'
+
+#hosts 파일 삭제
+sshpass -p It1 ssh root@${var1} 'rm -rf /root/cat.txt'
+sshpass -p It1 ssh root@${var2} 'rm -rf /root/cat.txt'
+sshpass -p It1 ssh root@${var3} 'rm -rf /root/cat.txt'
+sshpass -p It1 ssh root@${var4} 'rm -rf /root/cat.txt'
+
+#expect 파일 삭제
+rm -rf ./aa.exp
+rm -rf ./cat.txt
+rm -rf ./ssh.exp
+#ansible 설치
+yum install -y ansible
+yum install -y python3
+
+#/etc/ansible/hosts
+cat >> /etc/ansible/hosts << EOF
+${var1}
+${var2}
+${var3}
+${var4}
+[master]
+${var1}
+[node]
+${var2}
+${var3}
+${var4}
+EOF
+
+#ssh 키 생성 파일 생성
+cat > ./ssh1.exp << EOF
+#!/usr/bin/expect
+set username [lindex \$argv 0]
+set password [lindex \$argv 1]
+set hostname [lindex \$argv 2]
+if {[llength \$argv] == 0} {
+  send_user "Usage: scriptname username \'password\' hostname \n"
+  exit 1
+}
+spawn sudo -u admin ssh admin@\$username
+expect {
+  "(yes/no)?" { send "yes\n"; exp_continue }
+}
+send_user "\n# SSH is success \n"
+send "exit \r"
+expect eof
+EOF
+
+
+#모드 변경
+chmod 777 ./ssh1.exp
+
+./ssh1.exp ${var1} a a
+./ssh1.exp ${var2} a a
+./ssh1.exp ${var3} a a
+./ssh1.exp ${var4} a a
+
+#expect 파일 삭제
+rm -rf ./aa.exp
+rm -rf ./cat.txt
+rm -rf ./ssh.exp
+rm -rf ./ssh1.exp
+
+#==========================앤서블 설치 완료 ===================================
+
+
+#!!!!!루트 키 생성!!!!!!=================================
+
+#ssh 키 생성 파일 생성
+cat > ./ssh.exp << EOF
+#!/usr/bin/expect
+spawn ssh-keygen -t rsa
+expect {
+  "(/root/.ssh/id_rsa):" { send "\n"; exp_continue }
+}
+expect {
+  "(empty for no passphrase):" { send "\n"; exp_continue }
+}
+expect {
+  "passphrase again:" { send "\n"; exp_continue }
+}
+expect {
+  "(/root/.ssh/id_rsa):" { send "\n"; exp_continue }
+}
+expect eof
+EOF
+
+#모드 변경
+chmod 777 ./ssh.exp
+
+#키 생성 실행
+./ssh.exp
+
+#키 배포
+sshpass -p It1 ssh-copy-id -i /root/.ssh/id_rsa.pub root@${var1} 
+sshpass -p It1 ssh-copy-id -i /root/.ssh/id_rsa.pub root@${var2}
+sshpass -p It1 ssh-copy-id -i /root/.ssh/id_rsa.pub root@${var3}
+sshpass -p It1 ssh-copy-id -i /root/.ssh/id_rsa.pub root@${var4}
+
+#####루트 키 생성 완료######=====================================================
+
+
+#================== 쿠버네티스 설치 =============================================
+
+
+#node.sh 파일 전송
+
+#hosts 파일 전송
+sshpass -p It1 scp ./node.sh root@${var2}:/root/node.sh
+sshpass -p It1 scp ./node.sh root@${var3}:/root/node.sh
+sshpass -p It1 scp ./node.sh root@${var4}:/root/node.sh
+
+#실행
+ansible node -m shell -a 'sh node.sh'
+
+#master.sh파일 전송
+
+sshpass -p It1 scp ./master.sh root@${var1}:/root/master.sh
+
+#실행
+ansible master -m shell -a 'sh master.sh'
+
+#====================쿠버네티스 설치 완료=============================
+
+
+#=====================토큰 배포=================================
+
+#token file
+cat > token.sh << EOF
+kubeadm join ${var1}:6443 --token abcdef.0123456789abcdef \
+        --discovery-token-ca-cert-hash sha256:\\
+EOF
+
+#토큰 긁어오기
+ansible master -m shell -a "openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'" | tail -n 1 >> token.sh
+
+
+#토큰파일 배포
+scp ./token.sh root@${var2}:/root/token.sh
+scp ./token.sh root@${var3}:/root/token.sh
+scp ./token.sh root@${var4}:/root/token.sh
+
+
+#토큰 시작
+sshpass -p It1 ssh root@${var2} 'sh token.sh'
+sshpass -p It1 ssh root@${var3} 'sh token.sh'
+sshpass -p It1 ssh root@${var4} 'sh token.sh'
+
+#토큰 제거
+rm -rf token.sh
+sshpass -p It1 ssh root@${var2} 'rm -rf token.sh'
+sshpass -p It1 ssh root@${var3} 'rm -rf token.sh'
+sshpass -p It1 ssh root@${var4} 'rm -rf token.sh'
+
+
+#==========================설정 완료=============================
+cd ..
+rm -rf ansible_install
+
+#==========================제거================================
+
