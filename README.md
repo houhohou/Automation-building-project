@@ -1,8 +1,21 @@
-# 효율적인 네트워크 구축을 위한 웹 서버 자동화
+# Automatic k8s creation script
 
-업무 효율 개선을 위한 자동화를 위한 스크립트 생성 프로젝트
+Environment
+- centos 5 servers 
 
+procedure
 
+1. Enable ssh connection
+2. Change each server hostname
+3. Ansible integration
+4. Deploy the k8s script
+5. Running the k8s script
+6. Deploy wordpress & mysql pod
+
+Result
+1 Ansible Control Server
+1 k8s master cluster
+3 k8s node cluster
 
 
 
